@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f5c6e">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<title>Entretien auto</title>
+<style>
+:root{--bg:#f2f3ef;--card:#fff;--ink:#1c2226;--mute:#667078;--line:#dde0da;--acc:#0f5c6e;--accfg:#fff;--ok:#2e7d4f;--warn:#c76b00;--bad:#c62828;--okbg:#e4f2e9;--warnbg:#fdf0dc;--badbg:#fbe3e1}
+@media(prefers-color-scheme:dark){:root{--bg:#14181b;--card:#1e2428;--ink:#eceff1;--mute:#97a2a9;--line:#2c353a;--acc:#4fb3c8;--accfg:#06232a;--ok:#6fcf97;--warn:#f2a54a;--bad:#ff7b72;--okbg:#1b3426;--warnbg:#3b2c14;--badbg:#401c1a}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:17px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+header{position:sticky;top:0;z-index:5;background:var(--acc);color:var(--accfg);display:flex;align-items:center;gap:8px;padding:12px 14px}
+header h1{font-size:1.15rem;margin:0;flex:1}
+header button{background:transparent;color:inherit;border:0;font-size:1.5rem;padding:4px 10px;min-height:44px}
+main{max-width:640px;margin:0 auto;padding:14px 14px 90px}
+h2{font-size:1.05rem;margin:22px 0 8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin:0 0 10px}
+.car{display:flex;gap:12px;align-items:center;width:100%;text-align:left;color:inherit;font:inherit;cursor:pointer}
+.car b{font-size:1.1rem}.car small,.mute{color:var(--mute)}
+.car .km{margin-left:auto;text-align:right;font-weight:700;white-space:nowrap}
+.dot{width:14px;height:14px;border-radius:50%;flex:none;background:var(--ok)}
+.dot.l1{background:var(--warn)}.dot.l2{background:var(--bad)}
+.alert{border-left:6px solid var(--ok);background:var(--okbg);border-radius:10px;padding:10px 12px;margin:0 0 8px}
+.alert.l1{border-color:var(--warn);background:var(--warnbg)}.alert.l2{border-color:var(--bad);background:var(--badbg)}
+.alert b{display:block}
+.btn{background:var(--acc);color:var(--accfg);border:0;border-radius:10px;padding:12px 16px;font:inherit;font-weight:600;min-height:46px;cursor:pointer}
+.btn.sec{background:transparent;color:var(--acc);border:1.5px solid var(--acc)}
+.btn.del{background:transparent;color:var(--bad);border:1.5px solid var(--bad)}
+.btn.sm{padding:6px 12px;min-height:38px;font-size:.92rem}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.big{font-size:2.2rem;font-weight:800;letter-spacing:-.02em}
+.item{border-top:1px solid var(--line);padding:10px 0}.item:first-child{border-top:0}
+.back{background:none;border:0;color:var(--acc);font:inherit;font-weight:600;padding:8px 0;min-height:44px}
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:none;align-items:flex-end;justify-content:center;z-index:20}
+#modal.on{display:flex}
+#sheet{background:var(--card);width:100%;max-width:640px;border-radius:16px 16px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));max-height:90vh;overflow:auto}
+#sheet h3{margin:0 0 10px}
+label{display:block;font-size:.88rem;color:var(--mute);margin:10px 0 4px}
+input,textarea,select{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1.5px solid var(--line);border-radius:10px;padding:11px}
+input:focus,textarea:focus,select:focus,button:focus-visible{outline:3px solid var(--acc);outline-offset:1px}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:10px;display:none;z-index:30}
+</style>
+</head>
+<body>
+<header><h1 id="title">Entretien auto</h1><button id="menuBtn" aria-label="Menu">⋮</button></header>
+<main id="app"></main>
+<div id="modal"><div id="sheet"></div></div>
+<div id="toast"></div>
+<input type="file" id="file" accept=".json,application/json" hidden>
+<script>
+const VERSION="1.0.0", KEY="entretien-auto-data";
+const uid=()=>Math.random().toString(36).slice(2,9);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt=n=>Number(n).toLocaleString("fr-FR");
+const today=()=>new Date().toISOString().slice(0,10);
+const frDate=d=>d?new Date(d+"T12:00").toLocaleDateString("fr-FR"):"";
+
+function seed(){
+  const mk=(name,plate,km)=>({id:uid(),name,plate,km,kmLog:[[Date.now(),km]],tasks:[],history:[],comments:[]});
+  return {v:1,alertKm:1000,alertDays:30,cars:[
+    mk("Porsche 911 Carrera 4S","CT-867-HE",175900),
+    mk("Camping-car Fiat Ducato","EE-067-GK",59000),
+    mk("Volvo D4 190","DS-401-RM",214300),
+    mk("Peugeot 205 GTI 1,9","9093 XF 35",321000),
+    mk("Peugeot Expert Tepee","EE-919-FH",361000)]};
+}
+function migrate(d){ d.alertKm??=1000; d.alertDays??=30; d.cars??=[]; d.v=1; return d; }
+let db; try{ db=migrate(JSON.parse(localStorage.getItem(KEY))||seed()); }catch(e){ db=seed(); }
+const save=()=>localStorage.setItem(KEY,JSON.stringify(db));
+let view=null; // id de la voiture ouverte
+const car=()=>db.cars.find(c=>c.id===view);
+
+/* ---------- calculs ---------- */
+function rate(c){ // km par jour estimés
+  const l=c.kmLog.slice(-10); if(l.length<2) return 0;
+  const d=(l[l.length-1][0]-l[0][0])/864e5; if(d<3) return 0;
+  return Math.max(0,(l[l.length-1][1]-l[0][1])/d);
+}
+function human(days){ days=Math.round(days);
+  if(days<=1) return "environ 1 jour"; if(days<14) return `environ ${days} jours`;
+  if(days<60) return `environ ${Math.round(days/7)} semaines`; return `environ ${Math.round(days/30)} mois`; }
+function info(c,t){
+  let level=0, parts=[];
+  if(t.dueKm){ const r=t.dueKm-c.km;
+    if(r<=0){level=2;parts.push(`dépassé de ${fmt(-r)} km`);}
+    else{ if(r<=db.alertKm) level=Math.max(level,1);
+      let s=`dans ${fmt(r)} km`; const k=rate(c); if(k>0) s+=` (${human(r/k)})`; parts.push(s);} }
+  if(t.dueDate){ const r=Math.ceil((new Date(t.dueDate+"T12:00")-new Date())/864e5);
+    if(r<=0){level=2;parts.push(`échéance dépassée (${frDate(t.dueDate)})`);}
+    else{ if(r<=db.alertDays) level=Math.max(level,1); parts.push(`le ${frDate(t.dueDate)} (${human(r)})`);} }
+  if(!parts.length) parts.push("pas d'échéance");
+  return {level,text:parts.join(" · ")};
+}
+function alerts(){
+  const out=[]; db.cars.forEach(c=>c.tasks.forEach(t=>{const i=info(c,t); if(i.level) out.push({c,t,...i});}));
+  return out.sort((a,b)=>b.level-a.level);
+}
+const carLevel=c=>Math.max(0,...c.tasks.map(t=>info(c,t).level));
+
+/* ---------- interface ---------- */
+function toast(m){const e=document.getElementById("toast");e.textContent=m;e.style.display="block";setTimeout(()=>e.style.display="none",2200);}
+function modal(title,fields,onSave,extra){
+  const s=document.getElementById("sheet");
+  s.innerHTML=`<h3>${esc(title)}</h3>`+fields.map(f=>`<label for="f_${f.k}">${esc(f.label)}</label>`+
+    (f.type==="textarea"?`<textarea id="f_${f.k}" rows="3">${esc(f.value)}</textarea>`:
+     `<input id="f_${f.k}" type="${f.type||"text"}" ${f.type==="number"?'inputmode="numeric"':""} value="${esc(f.value)}">`)).join("")+
+    `<div class="row" style="margin-top:16px"><button class="btn" id="ok">Enregistrer</button><button class="btn sec" id="no">Annuler</button>${extra?'<button class="btn del" id="x">Supprimer</button>':""}</div>`;
+  const m=document.getElementById("modal"); m.classList.add("on");
+  const close=()=>m.classList.remove("on");
+  s.querySelector("#no").onclick=close;
+  if(extra) s.querySelector("#x").onclick=()=>{ if(confirm("Supprimer définitivement ?")){extra();save();close();render();} };
+  s.querySelector("#ok").onclick=()=>{ const v={}; fields.forEach(f=>v[f.k]=s.querySelector("#f_"+f.k).value.trim()); if(onSave(v)!==false){save();close();render();} };
+  setTimeout(()=>{const i=s.querySelector("input,textarea"); i&&i.focus();},50);
+}
+const num=v=>v===""?null:Number(String(v).replace(/\s/g,"").replace(",","."));
+
+function setKm(c,km){ c.km=km; c.kmLog.push([Date.now(),km]); c.kmLog=c.kmLog.slice(-30); }
+
+function render(){
+  const a=document.getElementById("app"), c=view?car():null;
+  if(view&&!c){view=null;}
+  document.getElementById("title").textContent=c?c.name:"Entretien auto";
+  a.innerHTML=c?detail(c):home();
+  window.scrollTo(0,0); bind();
+}
+function home(){
+  const al=alerts();
+  let h="";
+  if(al.length){ h+=`<h2>À prévoir</h2>`+al.map(x=>`<div class="alert l${x.level}"><b>${esc(x.t.name)} — ${esc(x.c.name)}</b>${esc(x.text)}</div>`).join(""); }
+  else h+=`<div class="alert"><b>Rien d'urgent</b>Tous les entretiens sont à jour.</div>`;
+  h+=`<h2>Mes véhicules</h2>`+db.cars.map(c=>`<button class="card car" data-car="${c.id}"><span class="dot l${carLevel(c)}"></span><span><b>${esc(c.name)}</b><br><small>${esc(c.plate)}</small></span><span class="km">${fmt(c.km)} km</span></button>`).join("");
+  h+=`<button class="btn" id="addCar">+ Ajouter un véhicule</button>`;
+  return h;
+}
+function detail(c){
+  const tasks=c.tasks.map(t=>({t,i:info(c,t)})).sort((a,b)=>b.i.level-a.i.level);
+  const hist=[...c.history].sort((a,b)=>b.date.localeCompare(a.date)||b.km-a.km);
+  return `<button class="back" id="back">‹ Retour</button>
+  <div class="card"><div class="mute">${esc(c.plate)}</div><div class="big">${fmt(c.km)} km</div>
+   <div class="row" style="margin-top:10px"><button class="btn" id="upKm">Mettre à jour le km</button><button class="btn sec" id="editCar">Modifier la fiche</button></div></div>
+  <h2>Entretiens à venir</h2>
+  ${tasks.length?tasks.map(({t,i})=>`<div class="card"><div class="row"><span class="dot l${i.level}"></span><b>${esc(t.name)}</b></div><div>${esc(i.text)}</div>${t.note?`<div class="mute">${esc(t.note)}</div>`:""}
+   <div class="row" style="margin-top:8px"><button class="btn sm" data-done="${t.id}">Fait ✓</button><button class="btn sec sm" data-edtask="${t.id}">Modifier</button></div></div>`).join(""):`<p class="mute">Aucun entretien prévu.</p>`}
+  <button class="btn" id="addTask">+ Programmer un entretien</button>
+  <h2>Travaux effectués</h2>
+  <div class="card">${hist.length?hist.map(x=>`<div class="item"><b>${esc(x.desc)}</b><br><span class="mute">${frDate(x.date)} · ${fmt(x.km)} km${x.cost?` · ${fmt(x.cost)} €`:""}</span> <button class="btn sec sm" data-edhist="${x.id}" style="float:right">Modifier</button></div>`).join(""):`<span class="mute">Aucun travail enregistré.</span>`}</div>
+  <button class="btn sec" id="addHist">+ Ajouter un travail effectué</button>
+  <h2>Commentaires</h2>
+  <div class="card">${c.comments.length?[...c.comments].reverse().map(x=>`<div class="item"><span class="mute">${frDate(x.date)}</span> <button class="btn sec sm" data-edcom="${x.id}" style="float:right">Modifier</button><br>${esc(x.text).replace(/\n/g,"<br>")}</div>`).join(""):`<span class="mute">Aucun commentaire.</span>`}</div>
+  <button class="btn sec" id="addCom">+ Ajouter un commentaire</button>`;
+}
+const $=id=>document.getElementById(id);
+function bind(){
+  document.querySelectorAll("[data-car]").forEach(b=>b.onclick=()=>{view=b.dataset.car;render();});
+  $("addCar")&&($("addCar").onclick=()=>modal("Nouveau véhicule",[{k:"name",label:"Nom du véhicule"},{k:"plate",label:"Immatriculation"},{k:"km",label:"Kilométrage actuel",type:"number"}],v=>{
+    if(!v.name) return false; const km=num(v.km)||0; db.cars.push({id:uid(),name:v.name,plate:v.plate,km,kmLog:[[Date.now(),km]],tasks:[],history:[],comments:[]});}));
+  if(!view) return; const c=car();
+  $("back").onclick=()=>{view=null;render();};
+  $("upKm").onclick=()=>modal("Kilométrage actuel",[{k:"km",label:"Kilomètres au compteur",type:"number",value:c.km}],v=>{
+    const km=num(v.km); if(km==null||isNaN(km)) return false;
+    if(km<c.km && !confirm("Ce kilométrage est inférieur à l'ancien. Continuer ?")) return false; setKm(c,km); toast("Kilométrage mis à jour"); setTimeout(()=>checkNotif(true),300);});
+  $("editCar").onclick=()=>modal("Modifier la fiche",[{k:"name",label:"Nom",value:c.name},{k:"plate",label:"Immatriculation",value:c.plate},{k:"km",label:"Kilométrage",type:"number",value:c.km}],v=>{
+    if(!v.name) return false; c.name=v.name;c.plate=v.plate; const km=num(v.km); if(km!=null&&km!==c.km) setKm(c,km);},
+    ()=>{db.cars=db.cars.filter(x=>x.id!==c.id);view=null;});
+  const taskForm=(t)=>[{k:"name",label:"Travail (vidange, embrayage…)",value:t?.name||""},
+    {k:"dueKm",label:"À faire à (km)",type:"number",value:t?.dueKm??""},{k:"dueDate",label:"Ou avant le (date)",type:"date",value:t?.dueDate||""},
+    {k:"intervalKm",label:"Se répète tous les (km) — facultatif",type:"number",value:t?.intervalKm??""},
+    {k:"intervalMonths",label:"Se répète tous les (mois) — facultatif",type:"number",value:t?.intervalMonths??""},
+    {k:"note",label:"Note",type:"textarea",value:t?.note||""}];
+  const readTask=(t,v)=>{ if(!v.name||(!v.dueKm&&!v.dueDate)){alert("Indique un nom et au moins un km ou une date.");return false;}
+    Object.assign(t,{name:v.name,dueKm:num(v.dueKm),dueDate:v.dueDate||null,intervalKm:num(v.intervalKm),intervalMonths:num(v.intervalMonths),note:v.note}); };
+  $("addTask").onclick=()=>modal("Programmer un entretien",taskForm(),v=>{const t={id:uid()};if(readTask(t,v)===false)return false;c.tasks.push(t);});
+  document.querySelectorAll("[data-edtask]").forEach(b=>b.onclick=()=>{const t=c.tasks.find(x=>x.id===b.dataset.edtask);
+    modal("Modifier l'entretien",taskForm(t),v=>readTask(t,v),()=>{c.tasks=c.tasks.filter(x=>x!==t);});});
+  document.querySelectorAll("[data-done]").forEach(b=>b.onclick=()=>{const t=c.tasks.find(x=>x.id===b.dataset.done);
+    modal(`Fait : ${t.name}`,[{k:"date",label:"Date",type:"date",value:today()},{k:"km",label:"Kilométrage",type:"number",value:c.km},{k:"cost",label:"Coût (€) — facultatif",type:"number",value:""}],v=>{
+      const km=num(v.km)||c.km; c.history.push({id:uid(),date:v.date||today(),km,desc:t.name,cost:num(v.cost)});
+      if(km>c.km) setKm(c,km);
+      if(t.intervalKm||t.intervalMonths){ if(t.intervalKm) t.dueKm=km+t.intervalKm; else t.dueKm=null;
+        if(t.intervalMonths){const d=new Date((v.date||today())+"T12:00");d.setMonth(d.getMonth()+t.intervalMonths);t.dueDate=d.toISOString().slice(0,10);} else t.dueDate=null;
+        toast("Enregistré, prochain entretien reprogrammé"); }
+      else{ c.tasks=c.tasks.filter(x=>x!==t); toast("Enregistré dans l'historique"); }});});
+  const histForm=(x)=>[{k:"desc",label:"Travail effectué",value:x?.desc||""},{k:"date",label:"Date",type:"date",value:x?.date||today()},{k:"km",label:"Kilométrage",type:"number",value:x?.km??c.km},{k:"cost",label:"Coût (€) — facultatif",type:"number",value:x?.cost??""}];
+  const readHist=(x,v)=>{if(!v.desc)return false;Object.assign(x,{desc:v.desc,date:v.date||today(),km:num(v.km)||0,cost:num(v.cost)});};
+  $("addHist").onclick=()=>modal("Travail effectué",histForm(),v=>{const x={id:uid()};if(readHist(x,v)===false)return false;c.history.push(x);});
+  document.querySelectorAll("[data-edhist]").forEach(b=>b.onclick=()=>{const x=c.history.find(h=>h.id===b.dataset.edhist);
+    modal("Modifier le travail",histForm(x),v=>readHist(x,v),()=>{c.history=c.history.filter(h=>h!==x);});});
+  $("addCom").onclick=()=>modal("Nouveau commentaire",[{k:"text",label:"Commentaire",type:"textarea"}],v=>{if(!v.text)return false;c.comments.push({id:uid(),date:today(),text:v.text});});
+  document.querySelectorAll("[data-edcom]").forEach(b=>b.onclick=()=>{const x=c.comments.find(h=>h.id===b.dataset.edcom);
+    modal("Modifier le commentaire",[{k:"text",label:"Commentaire",type:"textarea",value:x.text}],v=>{if(!v.text)return false;x.text=v.text;},()=>{c.comments=c.comments.filter(h=>h!==x);});});
+}
+
+/* ---------- menu, sauvegarde, notifications ---------- */
+$("menuBtn").onclick=()=>{
+  const s=$("sheet"), n=("Notification" in window)?Notification.permission:"non pris en charge";
+  s.innerHTML=`<h3>Menu</h3><div class="row" style="flex-direction:column;align-items:stretch">
+   <button class="btn sec" id="mSet">Seuils d'alerte</button>
+   <button class="btn sec" id="mNotif">Activer les notifications (${esc(n==="granted"?"activées":n==="denied"?"refusées":"désactivées")})</button>
+   <button class="btn sec" id="mExp">Sauvegarder (exporter)</button>
+   <button class="btn sec" id="mImp">Restaurer (importer)</button>
+   <button class="btn sec" id="mClose">Fermer</button></div><p class="mute">Version ${VERSION}</p>`;
+  $("modal").classList.add("on"); const close=()=>$("modal").classList.remove("on");
+  $("mClose").onclick=close;
+  $("mSet").onclick=()=>modal("Seuils d'alerte",[{k:"km",label:"Prévenir quand il reste moins de (km)",type:"number",value:db.alertKm},{k:"d",label:"Prévenir quand il reste moins de (jours)",type:"number",value:db.alertDays}],v=>{db.alertKm=num(v.km)||1000;db.alertDays=num(v.d)||30;});
+  $("mNotif").onclick=async()=>{ if(!("Notification" in window)){alert("Notifications non prises en charge.");return;}
+    const r=await Notification.requestPermission(); close(); toast(r==="granted"?"Notifications activées":"Notifications non autorisées"); if(r==="granted") checkNotif(true); };
+  $("mExp").onclick=()=>{ const b=new Blob([JSON.stringify(db,null,1)],{type:"application/json"}); const a=document.createElement("a");
+    a.href=URL.createObjectURL(b); a.download=`entretien-auto-${today()}.json`; a.click(); close(); toast("Sauvegarde créée"); };
+  $("mImp").onclick=()=>{close();$("file").click();};
+};
+$("file").onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader();
+  r.onload=()=>{ try{ const d=JSON.parse(r.result); if(!Array.isArray(d.cars)) throw 0;
+    if(confirm("Remplacer toutes les données actuelles par cette sauvegarde ?")){ db=migrate(d); save(); view=null; render(); toast("Données restaurées"); } }
+    catch(_){ alert("Fichier de sauvegarde invalide."); } e.target.value=""; };
+  r.readAsText(f); };
+
+async function checkNotif(force){
+  if(!("Notification" in window)||Notification.permission!=="granted") return;
+  const al=alerts(); if(!al.length) return;
+  const sig=today()+al.map(x=>x.t.id+x.level).join(); if(!force&&localStorage.getItem("notif-sig")===sig) return;
+  localStorage.setItem("notif-sig",sig);
+  const body=al.slice(0,4).map(x=>`${x.t.name} (${x.c.name}) : ${x.text}`).join("\n");
+  try{ const reg=await navigator.serviceWorker.ready; reg.showNotification("Entretien à prévoir",{body,icon:"icon-192.png",tag:"entretien"}); }catch(_){ new Notification("Entretien à prévoir",{body}); }
+}
+
+if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").then(r=>r.update()).catch(()=>{});
+save(); render(); setTimeout(checkNotif,800);
+</script>
+</body>
+</html>
